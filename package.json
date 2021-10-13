@@ -1,5 +1,6 @@
 {
 	"name": "errcode",
+	"icon": "favicon.png",
 	"displayName": "ErrCode",
 	"description": "Generates uniques error codes inside a workspace.",
 	"version": "0.1.0",
