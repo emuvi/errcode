@@ -26,6 +26,13 @@ export function activate(context: vscode.ExtensionContext) {
 			return;
 		}
 		let editor = vscode.window.activeTextEditor as vscode.TextEditor;
+		
+		let projectIdentifier = vscode.workspace.name;
+		let workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+		if (workspaceFolder) {
+			projectIdentifier = workspaceFolder.name;
+		}
+
 		let fileName = editor.document.fileName;
 		let dotPosition = fileName.lastIndexOf(".");
 		if (dotPosition === -1) {
@@ -108,6 +115,7 @@ export function activate(context: vscode.ExtensionContext) {
 			findMaxErrCode();
 		}
 
+		
 		let maxErrCodeFound = 0;
 		let foundFilesLoaded = 0;
 
@@ -157,7 +165,8 @@ export function activate(context: vscode.ExtensionContext) {
 			while (newErrCode.length < 6) {
 				newErrCode = "0" + newErrCode;
 			}
-			newErrCode = "(ErrCode-" + newErrCode + ")";
+			newErrCode = (projectIdentifier ? "{" + projectIdentifier + "}" : "") +
+				"(ErrCode-" + newErrCode + ")";
 			const position = editor.selection.end;
 			editor.edit(editBuilder => {
 				editBuilder.insert(position, newErrCode);
