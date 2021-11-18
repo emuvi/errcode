@@ -3,7 +3,7 @@
 	"icon": "favicon.png",
 	"displayName": "ErrCode",
 	"description": "Generates uniques error codes inside a workspace.",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"publisher": "emuvi",
 	"repository": "https://github.com/emuvi/errcode",
 	"keywords": ["Debug", "Error"],

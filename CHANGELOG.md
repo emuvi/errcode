@@ -2,6 +2,10 @@
 
 ErrCode - Change Log
 
+## 0.2.2
+
+- Count only the ErrCode that have the same project identifier name.
+
 ## 0.2.1
 
 - Uses as project identifier the folder name instead of the workspace name.

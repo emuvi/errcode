@@ -33,6 +33,8 @@ export function activate(context: vscode.ExtensionContext) {
 			projectIdentifier = workspaceFolder.name;
 		}
 
+		let errCodePrefix = (projectIdentifier ? "{" + projectIdentifier + "}" : "") + "(ErrCode-";
+
 		let fileName = editor.document.fileName;
 		let dotPosition = fileName.lastIndexOf(".");
 		if (dotPosition === -1) {
@@ -126,17 +128,18 @@ export function activate(context: vscode.ExtensionContext) {
 						let starting = 0;
 						while (true) {
 							let text = doc.getText();
-							let found = text.indexOf("(ErrCode-", starting);
+							let found = text.indexOf(errCodePrefix, starting);
 							if (found > -1) {
 								let end = text.indexOf(")", found + 9);
 								if (end > -1) {
-									let errCodeText = text.substring(found + 9, end);
+									let errCodeText = text.substring(found + errCodePrefix.length, end);
 									try {
 										let errCodeVal = parseInt(errCodeText);
 										if (errCodeVal > maxErrCodeFound) {
 											maxErrCodeFound = errCodeVal;
 										}
-									} catch (_) {
+									} catch (ex) {
+										vscode.window.showErrorMessage("Problem on parsing: " + errCodeText + " - " + ex);
 									}
 									starting = end + 1;
 								} else {
@@ -165,8 +168,7 @@ export function activate(context: vscode.ExtensionContext) {
 			while (newErrCode.length < 6) {
 				newErrCode = "0" + newErrCode;
 			}
-			newErrCode = (projectIdentifier ? "{" + projectIdentifier + "}" : "") +
-				"(ErrCode-" + newErrCode + ")";
+			newErrCode = errCodePrefix + newErrCode + ")";
 			const position = editor.selection.end;
 			editor.edit(editBuilder => {
 				editBuilder.insert(position, newErrCode);
