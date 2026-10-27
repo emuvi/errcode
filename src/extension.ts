@@ -27,164 +27,91 @@ function joinPaths(parent: string, child: string) {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  let disposable = vscode.commands.registerCommand("errcode.newErrCode", () => {
-    if (!vscode.window.activeTextEditor) {
+  let disposable = vscode.commands.registerCommand("errcode.newErrCode", async () => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
       vscode.window.showErrorMessage(
         "You must have an active editor to generate an ErrCode"
       );
       return;
     }
-    let editor = vscode.window.activeTextEditor as vscode.TextEditor;
 
     let projectIdentifier = vscode.workspace.name;
-    let workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
     if (workspaceFolder) {
       projectIdentifier = workspaceFolder.name;
     }
 
-    let errCodePrefix =
+    const errCodePrefix =
       (projectIdentifier ? "{" + projectIdentifier + "}" : "") + "(ErrCode-";
 
-    let fileName = editor.document.fileName;
-    let dotPosition = fileName.lastIndexOf(".");
+    const fileName = editor.document.fileName;
+    const dotPosition = fileName.lastIndexOf(".");
     if (dotPosition === -1) {
       vscode.window.showErrorMessage(
         "You must have an active editor with an extension to generate an ErrCode"
       );
       return;
     }
-    let extension = fileName.substring(dotPosition);
+    const extension = fileName.substring(dotPosition);
 
-    let gitIgnoreFiles: vscode.Uri[];
-    let doneIgnoreFiles = false;
-    let allFoundFiles: vscode.Uri[];
-    let doneFoundFiles = false;
+    const [gitIgnoreFiles, allFoundFiles] = await Promise.all([
+      vscode.workspace.findFiles(".gitignore"),
+      vscode.workspace.findFiles("**/*" + extension),
+    ]);
 
-    vscode.workspace.findFiles(".gitignore").then((res) => {
-      gitIgnoreFiles = res;
-      doneIgnoreFiles = true;
-    });
-    vscode.workspace.findFiles("**/*" + extension).then((res) => {
-      allFoundFiles = res;
-      doneFoundFiles = true;
-    });
-
-    setTimeout(checkDoneFindFiles, 100);
-    function checkDoneFindFiles() {
-      if (!doneIgnoreFiles || !doneFoundFiles) {
-        setTimeout(checkDoneFindFiles, 100);
-      } else {
-        loadIgnoreFiles();
-      }
-    }
-
-    let foldersToBeIgnored: string[] = [];
-    let ignoreFilesLoaded = 0;
-
-    function loadIgnoreFiles() {
-      for (const ignoreFile of gitIgnoreFiles) {
-        vscode.workspace.openTextDocument(ignoreFile).then((doc) => {
-          for (let line of doc.getText().split(/\r?\n/)) {
-            if (line.startsWith("/") || line.endsWith("/")) {
-              let folder = getFolder(ignoreFile.path);
-              if (!line.endsWith("/")) {
-                line += "/";
-              }
-              foldersToBeIgnored.push(joinPaths(folder, line));
+    const foldersToBeIgnored: string[] = [];
+    await Promise.all(
+      gitIgnoreFiles.map(async (ignoreFile) => {
+        const doc = await vscode.workspace.openTextDocument(ignoreFile);
+        const folder = getFolder(ignoreFile.path);
+        for (let line of doc.getText().split(/\r?\n/)) {
+          if (line.startsWith("/") || line.endsWith("/")) {
+            if (!line.endsWith("/")) {
+              line += "/";
             }
-          }
-          ignoreFilesLoaded++;
-        });
-      }
-
-      setTimeout(checkDoneLoadIgnoreFiles, 100);
-      function checkDoneLoadIgnoreFiles() {
-        if (ignoreFilesLoaded < gitIgnoreFiles.length) {
-          setTimeout(checkDoneLoadIgnoreFiles, 100);
-        } else {
-          delIgnoredFiles();
-        }
-      }
-    }
-
-    function delIgnoredFiles() {
-      for (let index = allFoundFiles.length - 1; index >= 0; index--) {
-        const element = allFoundFiles[index];
-        if (isToDelete(element)) {
-          allFoundFiles.splice(index, 1);
-        }
-      }
-
-      function isToDelete(element: vscode.Uri): boolean {
-        let elementFolder = getFolder(element.path);
-        for (const folderToBeIgnored of foldersToBeIgnored) {
-          if (elementFolder.startsWith(folderToBeIgnored)) {
-            return true;
+            foldersToBeIgnored.push(joinPaths(folder, line));
           }
         }
-        return false;
-      }
+      })
+    );
 
-      findMaxErrCode();
-    }
+    const filteredFiles = allFoundFiles.filter((file) => {
+      const elementFolder = getFolder(file.path);
+      return !foldersToBeIgnored.some((ignored) => elementFolder.startsWith(ignored));
+    });
 
     let maxErrCodeFound = 0;
-    let foundFilesLoaded = 0;
-
-    function findMaxErrCode() {
-      for (const foundFile of allFoundFiles) {
-        vscode.workspace.openTextDocument(foundFile).then((doc) => {
-          let starting = 0;
-          while (true) {
-            let text = doc.getText();
-            let found = text.indexOf(errCodePrefix, starting);
-            if (found > -1) {
-              let end = text.indexOf(")", found + 9);
-              if (end > -1) {
-                let errCodeText = text.substring(found + errCodePrefix.length, end);
-                try {
-                  let errCodeVal = parseInt(errCodeText);
-                  if (errCodeVal > maxErrCodeFound) {
-                    maxErrCodeFound = errCodeVal;
-                  }
-                } catch (ex) {
-                  vscode.window.showErrorMessage(
-                    "Problem on parsing: " + errCodeText + " - " + ex
-                  );
-                }
-                starting = end + 1;
-              } else {
-                break;
-              }
-            } else {
-              break;
-            }
+    await Promise.all(
+      filteredFiles.map(async (foundFile) => {
+        const doc = await vscode.workspace.openTextDocument(foundFile);
+        const text = doc.getText();
+        let starting = 0;
+        while (true) {
+          const found = text.indexOf(errCodePrefix, starting);
+          if (found === -1) {
+            break;
           }
-          foundFilesLoaded++;
-        });
-      }
-
-      setTimeout(checkMaxErrCodeFound, 100);
-      function checkMaxErrCodeFound() {
-        if (foundFilesLoaded < allFoundFiles.length) {
-          setTimeout(checkMaxErrCodeFound, 100);
-        } else {
-          insertErrCode();
+          const end = text.indexOf(")", found + 9);
+          if (end === -1) {
+            break;
+          }
+          const errCodeText = text.substring(found + errCodePrefix.length, end);
+          const errCodeVal = parseInt(errCodeText, 10);
+          if (!isNaN(errCodeVal) && errCodeVal > maxErrCodeFound) {
+            maxErrCodeFound = errCodeVal;
+          }
+          starting = end + 1;
         }
-      }
-    }
+      })
+    );
 
-    function insertErrCode() {
-      let newErrCode = (maxErrCodeFound + 1).toString();
-      while (newErrCode.length < 6) {
-        newErrCode = "0" + newErrCode;
-      }
-      newErrCode = errCodePrefix + newErrCode + ")";
-      const position = editor.selection.end;
-      editor.edit((editBuilder) => {
-        editBuilder.insert(position, newErrCode);
-      });
-    }
+    const nextCode = (maxErrCodeFound + 1).toString().padStart(6, "0");
+    const newErrCode = errCodePrefix + nextCode + ")";
+    const position = editor.selection.end;
+    await editor.edit((editBuilder) => {
+      editBuilder.insert(position, newErrCode);
+    });
   });
 
   context.subscriptions.push(disposable);
